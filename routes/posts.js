@@ -1,68 +1,75 @@
 const express = require("express");
-const Note = require("../schemas/post.js"); //저 파일에서 내보냈던 스키마를 참조. 모델은 보기쉽게 대문자 추천. 소문자인 다른 변수쓸때 겹칠수도있고.
 const router = express.Router();
 
-router.post("/", async (req, res) => {
-    //const author = req.body.author; //하나씩 받아올 때 이런식. get을 제외한 포스트, 풋, 딜리트 이런애들은 바디를 가져올수가있다. 
-    //const {author} = req.body; //이런식으로 {}로 감싸서 해도 됨.
-    const { noteId, author, pw, title, content} = req.body; //한꺼번에 가져오기.
-    const note = await Note.find({ noteId });  //find 함수가 promis를 반환해서. await 쓸수있게 위에 async 써야함.
-    if (note.length) {   //note에 아무것도 안담겨오면  길이가 0일 때 = 즉 못찾았을 때인데. 이건 찾앗을 경우.
-        return res.status(400).json({ success: false, errorMessage: "이미 있는 데이터입니다." });    //여기서 리턴한 이유는 실패시 밑에꺼 실행안하기위함. else쓰면 더 길어지니까 return해도 아무 상관없을 때는 짧게 코딩하는거.
-    }   //실패할 때도 200 ok.를 보내버리는데 400으로 보내기위해 저사이에 .status(400) 추가. 
-    const createnote = await Note.create({ noteId, author, pw, title, content, createdAt:Date.now() }); //create는 모델을 만들고 insert까지 해주는 함수.
-    
-    res.json({ note: createnote });
-});
-
-router.get("/:noteId", async (req, res) => {
-    const { noteId } = req.params;
-
-    const [note] = await Note.find({ noteId: Number(noteId) }).select('-pw -__v -_id -noteId'); //하나가 아닐수있기에 []로 감싼거. -빼고 쓰면 받고싶은거.
-    res.json({
-        note
-    });
-
-    
-    
-
-});
-
-router.get("/", async (req, res) => {
-    const note = await Note.find().select( '-pw -content -__v -_id -noteId' ).sort( {createdAt : -1} ); //promise객체로 내보니지기때문에 await 써야함.
-    // 비밀번호는 보여주면 안되기때문에 slelect에서 pw뺐고. 날짜순 내림차순이라서 sort 써서 -1 넣음. 
-    res.json({
-        note // note : note 와 같은 구문. note, 콤마는 넣어도 되는건가.
-        //"title" : note[0].title
-
-
-    });
-});
-
-router.put("/:noteId", async (req, res) => {    //많이 바꾸면 put 적게 바꾸면 patch.
-    const { noteId } = req.params;
-    const { pw, title, content} = req.body; 
-    const note = await Note.find({ noteId, pw });  
-    if (note.length) {   
-        const putnote = await Note.findOneAndUpdate({ noteId:noteId}, {title:title, content:content }, {new : true}); //, {new : true}) 이거까지 명시해주면 업데이트 후껄 리턴.
-        res.json({ note: putnote });
-         
-    }else {
-        res.send("없는 데이터입니다."); 
+// 게시글 작성 API - 제목, 작성자명, 비밀번호, 작성 내용을 입력하기
+const Posts = require("../schemas/post")
+router.post('/posts/', async (req, res) => {
+    const {title, userName, password, content, createdAt} = req.body;
+    const createdPosts = await Posts.create({title, userName, password, content, createdAt});
+    if (createdPosts.length) {
+        return res.status(400).json ({message: "데이터 형식이 올바르지 않습니다."});
     }
-    
-});
+    res.json({"message" : "게시글을 생성하였습니다."})
+})
 
-router.delete("/:noteId", async (req, res) => {
-    const { noteId } = req.params;
-    const { pw} = req.body; 
-    const note = await Note.find({ noteId, pw });  
-    if (note.length) {   
-        const deletenote = await Note.findOneAndDelete( {noteId:noteId}); 
-        res.json({ note: deletenote }); 
-    }else {
-        res.send("없는 데이터입니다."); 
+// 전체 게시글 목록 조회 API - 제목, 작성자명, 작성 날짜 조회하기 / 작성 날짜 기준으로 내림차순 정렬 (최신순)
+router.get('/posts/', async (req, res) => {
+    const posts = await Posts
+                    .find({},{_id: 1, title: 1, userName: 1, createdAt: 1})
+                    .sort({createdAt: -1});
+
+    res.json({"data": posts})
+})
+
+// 게시글 상세 조회 API - 제목, 작성자명, 작성 날짜, 작성 내용을 조회하기
+router.get('/posts/:_id', async (req, res) => {
+    const {_id} = req.params;
+    const posts = await Posts.find({},{_id: 1, userName: 1, title: 1, content: 1, createdAt: 1})
+    if (posts.length == 0) {
+        return res.status(404).json ({message: "데이터 형식이 올바르지 않습니다."});
     }
-});
+    res.json({posts: posts})
+})
+
+// 게시글 수정 API - API를 호출할 때 입력된 비밀번호를 비교하여 동일할 때만 글이 수정되게 하기
+router.put('/posts/:_id', async (req, res) => {
+    const {_id} = req.params;
+    const {password, content} = req.body;
+
+    const existsPassword = await Posts.findOne({_id: _id})
+    const savedPassword = existsPassword.password
+
+    if (savedPassword !== password) {
+        return res.status(400).json({ message: '데이터 형식이 올바르지 않습니다.' }); 
+    } else if (savedPassword ==0) {
+        return res.status(400).json({ message: '게시글 조회에 실패하였습니다.' }); 
+    } else {
+        await Posts.updateOne(
+        {_id: _id},
+        {$set: {content: content}}
+        )
+    }
+    res.json({ message: "게시글을 수정하였습니다." })
+})
+
+// 게시글 삭제 API - API를 호출할 때 입력된 비밀번호를 비교하여 동일할 때만 글이 삭제되게 하기
+router.delete('/posts/:_id', async (req, res) => {
+    const {_id} = req.params;
+    const {password} = req.body;
+
+    const existsPassword = await Posts.findOne({_id: _id})
+    const savedPassword = existsPassword.password
+
+    if (savedPassword !== password) {
+        return res.status(400).json({ message: '데이터 형식이 올바르지 않습니다.' }) 
+    } else if (savedPassword == 0) {
+        return res.status(404).json({ message: '게시글 조회에 실패하였습니다.'})
+    }
+
+    await Posts.deleteOne({_id: _id})
+
+    res.json({message: '게시글을 삭제하였습니다.'})
+})
+
 
 module.exports = router;

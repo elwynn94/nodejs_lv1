@@ -1,53 +1,67 @@
 const express = require("express");
-const Comment = require("../schemas/comment.js");
 const router = express.Router();
 
-router.post("/", async (req, res) => {    //댓글 작성.
-    const { noteId, commentId, author, content, createdAt } = req.body;
-    const comment = await Comment.find( {noteId, commentId});
-    if (comment.length) {
-        return res.status(400).json( { success : false, erroMessage: "이미 있는 데이터입니다."});
-    }
-    const createcomment = await Comment.create( { noteId, commentId, author, content, createdAt});
-    res.json({ comment : createcomment});
-});
+// 댓글 작성 API
+const Comments = require("../schemas/comment")
+router.post('/comments/:postId', async (req, res) => {
+    const {postId} = req.params;
+    const {userName, password, content, createdAt} = req.body;
 
-router.get("/:noteId", async (req, res)=> {
-    const { noteId } = req.params;
-    //const  a = req.body;  //get도 바디값 받아올 수 있긴하네 그냥 되긴되는데 안쓰기록 약속한걸수도. 알아보니까 express.js에선 되는데 프론트엔드에서 어차피 안된다고 함.
-    //console.log(a);
-    const comment = await Comment.find( {noteId} ).sort( {createdAt : -1});
-    res.json({
-        comment,
-    });
-});
-
-router.put("/:noteId/:commentId", async (req, res)=>{
-    const { noteId, commentId } = req.params;
-    const { content} = req.body; 
-    const comment = await Comment.find({ noteId, commentId });  
-    console.log(noteId, commentId, content)
-    if (comment.length) {   
-        if (content.length){
-            const putcomment = await Comment.findOneAndUpdate({ noteId:noteId, commentId:commentId}, {content:content }, {new : true}); //, {new : true}) 이거까지 명시해주면 업데이트 후껄 리턴.
-            res.json({ comment: putcomment });
-        } else{
-            res.send("댓글 내용을 입력해주세요"); 
-        }
-    }else {
-        res.send("없는 데이터입니다."); 
+    if (content.length == 0){
+        return res.status(400).json({message : '댓글 내용을 입력해주세요'})
+    } else if (postId.length == 0) {
+        return res.status(400).json({message : '데이터 형식이 올바르지 않습니다.'})
     }
-});
 
-router.delete("/:noteId/:commentId", async (req, res)=>{
-    const { noteId, commentId } = req.params;
-    const comment = await Comment.find({ noteId, commentId });  
-    if (comment.length) {   
-        const deletecomment = await Comment.findOneAndDelete( {noteId:noteId, commentId:commentId}); 
-        res.json({ comment: deletecomment }); 
-    }else {
-        res.send("없는 데이터입니다."); 
+    const createdComments = await Comments.create({userName, password, content, postId, createdAt});
+    res.json({message : "댓글을 생성하였습니다."})
+})
+
+// 댓글 목록 조회 API - 조회하는 게시글에 작성된 모든 댓글을 목록 형식으로 / 작성 날짜 기준으로 내림차순 정렬 (최신순)
+router.get('/comments', async (req, res) => {
+    const {postId} = req.params;
+    const comments = await Comments
+                    .find({postId: postId},{_id: 1, userName: 1, content: 1, createdAt: 1})
+                    .sort({createdAt: -1});
+                    
+    if (postId == 0) {
+        return res.status(400).json({message : '데이터 형식이 올바르지 않습니다.'})
     }
-});
+
+    res.json({"data" : comments})
+})
+
+// 댓글 수정 API
+router.put('/comments/:postId', async (req, res) => {
+    const {postId} = req.params;
+    const {_id, userName, content} = req.body;
+
+    if (content.length) {
+        return res.status(400).json({message: '데이터 형식이 올바르지 않습니다.'})
+    } else if (content.length == 0) {
+        return res.status(400).json({message: '댓글 내용을 입력해주세요.'})
+    } else if (postId == 0) {
+        return res.status(404).json({message: '댓글 조회에 실패하였습니다.'})
+    }
+
+     await Comments.updateOne(
+     {_id: _id},
+     {$set: {content: content}})
+
+    res.json({message: "댓글을 수정하였습니다."})
+})
+
+// 댓글 삭제 API - 원하는 댓글 삭제
+router.delete('/comments/:_id', async (req, res) => {
+    const {_id} = req.params;
+    const deletedComments = await Comments.deleteOne({_id: _id})
+    if (deletedComments.length) {
+        return res.status(400).json({message: '데이터 형식이 올바르지 않습니다.'})
+    } else if (_id == 0){
+        return res.status(404).json({message: '댓글 조회에 실패하였습니다.'})
+    }
+    res.json({message: '댓글을 삭제하였습니다.'})
+})
+
 
 module.exports = router;
